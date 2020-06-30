@@ -5,13 +5,15 @@ import sbtcrossproject.crossProject
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
+resolvers in ThisBuild += Resolver.sonatypeRepo("snapshots")
+
 addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
 addCommandAlias(
   "fmtCheck",
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
 
-crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10")
+crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10", "0.25.0-RC2")
 scalaVersion in ThisBuild := crossScalaVersions.value.head
 
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
@@ -46,8 +48,7 @@ lazy val commonSettingsBase = Seq(
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
-    "-language:implicitConversions",
-    "-language:higherKinds",
+    "-language:implicitConversions,higherKinds",
     "-Xfatal-warnings"
   ) ++
     (scalaBinaryVersion.value match {
@@ -55,6 +56,8 @@ lazy val commonSettingsBase = Seq(
         List("-Xlint", "-Ywarn-unused")
       case v if v.startsWith("2.12") =>
         List("-Ypartial-unification")
+      case v if v.startsWith("0.") =>
+        Nil
       case other => sys.error(s"Unsupported scala version: $other")
     }),
   scalacOptions in (Compile, console) ~= {
@@ -71,15 +74,17 @@ lazy val commonSettingsBase = Seq(
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
-    compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
-    "org.typelevel" %%% "cats-core" % "2.1.1",
-    "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.1.3",
-    "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
-    "org.scalatestplus" %%% "scalacheck-1-14" % "3.2.0.0" % "test"
+    ("org.typelevel" %%% "cats-core" % "2.1.1").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-laws" % "2.1.1" % "test").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-effect" % "2.1.3").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test").withDottyCompat(scalaVersion.value),
+    ("org.scalacheck" %%% "scalacheck" % "1.14.3" % "test").withDottyCompat(scalaVersion.value),
+    ("org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test").withDottyCompat(scalaVersion.value),
+    ("org.scalatestplus" %%% "scalacheck-1-14" % "3.2.0.0" % "test").withDottyCompat(scalaVersion.value)
   ),
+  libraryDependencies ++= { if (isDotty.value) Nil else Seq(
+    compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3")
+  )},
   scmInfo := Some(
     ScmInfo(
       url("https://github.com/functional-streams-for-scala/fs2"),
@@ -268,7 +273,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.17"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "2.0.0-SNAPSHOT"
   )
   .jsSettings(commonJsSettings: _*)
 
