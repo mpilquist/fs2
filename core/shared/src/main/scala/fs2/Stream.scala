@@ -4885,7 +4885,9 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   implicit def functionKInstance[F[_]]: F ~> Stream[F, *] =
-    FunctionK.lift[F, Stream[F, *]](Stream.eval)
+    new (F ~> Stream[F, *]) {
+      def apply[X](fx: F[X]) = Stream.eval(fx)
+    }
 
   implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, *]] =
     new MonoidK[Stream[F, *]] {
