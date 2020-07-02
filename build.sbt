@@ -57,7 +57,7 @@ lazy val commonSettingsBase = Seq(
       case v if v.startsWith("2.12") =>
         List("-Ypartial-unification")
       case v if v.startsWith("0.") =>
-        Nil
+        List("-Ykind-projector")
       case other => sys.error(s"Unsupported scala version: $other")
     }),
   scalacOptions in (Compile, console) ~= {
@@ -273,6 +273,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
+    Compile / unmanagedSourceDirectories ++= {
+      if (isDotty.value)
+        List(CrossType.Pure, CrossType.Full).flatMap(
+          _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + "-3"))
+        )
+      else Nil
+    },
     libraryDependencies += "org.scodec" %%% "scodec-bits" % "2.0.0-SNAPSHOT"
   )
   .jsSettings(commonJsSettings: _*)
