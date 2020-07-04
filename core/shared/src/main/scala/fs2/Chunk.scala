@@ -477,7 +477,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 
   override def equals(a: Any): Boolean =
     a match {
-      case c: Chunk[O] =>
+      case c: Chunk[_] =>
         size == c.size && {
           var i = 0
           var result = true
