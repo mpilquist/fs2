@@ -1442,7 +1442,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
                     emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
                       go(Chunk.Queue.empty, newTimeout)
                     }
-                  case Left(t) => go(acc, currentTimeout)
+                  case Left(_) => go(acc, currentTimeout)
                   case Right(c) if acc.size + c.size >= n =>
                     val newAcc = acc :+ c
                     // this is the same if in the resize function,
@@ -3401,7 +3401,8 @@ object Stream extends StreamLowPriority {
   def resourceWeak[F[_], O](r: Resource[F, O]): Stream[F, O] =
     r match {
       case r: Resource.Allocate[f, o] =>
-        Stream.bracketCaseWeak(r.resource) { case ((_, release), e) => release(e) }.map(_._1)
+        val rr: Resource.Allocate[F, O] = r.asInstanceOf[Resource.Allocate[F, O]]
+        Stream.bracketCaseWeak(rr.resource) { case ((_, release), e) => release(e) }.map(_._1)
       case r: Resource.Bind[f, x, o] => resourceWeak(r.source).flatMap(o => resourceWeak(r.fs(o)))
       case r: Resource.Suspend[f, o] => Stream.eval(r.resource).flatMap(resourceWeak)
     }

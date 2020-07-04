@@ -409,7 +409,7 @@ object Pull extends PullLowPriority {
    */
   private abstract class Action[+F[_], +O, +R] extends Pull[F, O, R]
 
-  private final case class Output[O](values: Chunk[O]) extends Action[Pure, O, Unit] {
+  private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit] {
     override def mapOutput[P](f: O => P): Pull[Pure, P, Unit] =
       Pull.suspend {
         try Output(values.map(f))
@@ -804,7 +804,7 @@ object Pull extends PullLowPriority {
 
         case view: ViewL.View[F, X, y, Unit] =>
           view.step match {
-            case output: Output[_] =>
+            case output: Output[X] =>
               output.transformWith {
                 case r @ Result.Succeeded(_) if isMainLevel =>
                   translateStep(view.next(r), isMainLevel)
