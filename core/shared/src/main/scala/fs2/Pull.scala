@@ -345,7 +345,8 @@ object Pull extends PullLowPriority {
     override def mapOutput[P](f: O => P): Pull[F, P, R] =
       suspend {
         ViewL(this) match {
-          case v: ViewL.View[F, O, x, R] =>
+          case vU: ViewL.View[f, o, x, r] =>
+            val v = vU.asInstanceOf[ViewL.View[F, O, x, R]]
             new Bind[F, P, x, R](v.step.mapOutput(f)) {
               def cont(e: Result[x]) = v.next(e).mapOutput(f)
             }
@@ -549,7 +550,8 @@ object Pull extends PullLowPriority {
         case interrupted: Pull.Result.Interrupted =>
           F.pure(Interrupted(interrupted.context, interrupted.deferredError))
 
-        case view: ViewL.View[F, X, y, Unit] =>
+        case viewU: ViewL.View[f, x, y, Unit] =>
+          val view: ViewL.View[F, X, y, Unit] = viewU.asInstanceOf[ViewL.View[F, X, y, Unit]]
           def resume(res: Result[y]): F[R[X]] =
             go[X](scope, extendedTopLevelScope, view.next(res))
 
@@ -567,7 +569,8 @@ object Pull extends PullLowPriority {
                 F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
               )
 
-            case u: Step[F, y] =>
+            case uU: Step[f, y] =>
+              val u: Step[F, y] = uU.asInstanceOf[Step[F, y]]
               // if scope was specified in step, try to find it, otherwise use the current scope.
               F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
                 scope.findStepScope(scopeId)
@@ -584,8 +587,9 @@ object Pull extends PullLowPriority {
                       // scope back to the go as that is the scope that is expected to be here.
                       val nextScope = if (u.scope.isEmpty) outScope else scope
                       val result = Result.Succeeded(Some((head, outScope.id, tail)))
+                      val next = view.next(result).asInstanceOf[Pull[F, X, Unit]]
                       interruptGuard(nextScope)(
-                        go(nextScope, extendedTopLevelScope, view.next(result))
+                        go(nextScope, extendedTopLevelScope, next)
                       )
 
                     case Right(Interrupted(scopeId, err)) =>
@@ -766,11 +770,13 @@ object Pull extends PullLowPriority {
         )
       case interrupted: Result.Interrupted => interrupted // impossible
 
-      case view: ViewL.View[F, O, _, Unit] =>
+      case viewU: ViewL.View[F, o, _, Unit] =>
+        val view: ViewL.View[F, O, _, Unit] = viewU.asInstanceOf[ViewL.View[F, O, _, Unit]]
         view.step match {
           case CloseScope(scopeId, _, _) =>
             // Inner scope is getting closed b/c a parent was interrupted
-            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(view.next)
+            val nextU = view.next.asInstanceOf[Pull.Result[Unit] => Pull[F, O, Unit]] // TODO
+            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(nextU)
           case _ =>
             // all other cases insert interruption cause
             view.next(interruption)
@@ -798,7 +804,8 @@ object Pull extends PullLowPriority {
       ViewL(next) match {
         case result: Result[Unit] => result
 
-        case view: ViewL.View[F, X, y, Unit] =>
+        case viewU: ViewL.View[F, x, y, Unit] =>
+          val view: ViewL.View[F, X, y, Unit] = viewU.asInstanceOf[ViewL.View[F, X, y, Unit]]
           view.step match {
             case output: Output[_] =>
               output.transformWith {
@@ -816,7 +823,8 @@ object Pull extends PullLowPriority {
                 case r @ Result.Interrupted(_, _) => translateStep(view.next(r), isMainLevel)
               }
 
-            case step: Step[F, x] =>
+            case stepU: Step[f, x] =>
+              val step: Step[F, x] = stepU.asInstanceOf[Step[F, x]]
               Step[G, x](
                 stream = translateStep[x](step.stream, false),
                 scope = step.scope
