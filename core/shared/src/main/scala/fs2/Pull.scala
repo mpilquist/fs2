@@ -338,7 +338,7 @@ object Pull extends PullLowPriority {
     }
   }
 
-  private abstract class Bind[F[_], O, X, R](val step: Pull[F, O, X]) extends Pull[F, O, R] {
+  private abstract class Bind[+F[_], +O, X, +R](val step: Pull[F, O, X]) extends Pull[F, O, R] {
     def cont(r: Result[X]): Pull[F, O, R]
     def delegate: Bind[F, O, X, R] = this
 
@@ -562,7 +562,7 @@ object Pull extends PullLowPriority {
                 go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, None)))
             }
           view.step match {
-            case output: Output[X] =>
+            case output: Output[_] =>
               interruptGuard(scope)(
                 F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
               )
@@ -800,7 +800,7 @@ object Pull extends PullLowPriority {
 
         case view: ViewL.View[F, X, y, Unit] =>
           view.step match {
-            case output: Output[X] =>
+            case output: Output[_] =>
               output.transformWith {
                 case r @ Result.Succeeded(_) if isMainLevel =>
                   translateStep(view.next(r), isMainLevel)
