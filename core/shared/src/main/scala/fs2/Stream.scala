@@ -3078,7 +3078,7 @@ object Stream extends StreamLowPriority {
   def emits[F[x] >: Pure[x], O](os: scala.collection.Seq[O]): Stream[F, O] =
     os match {
       case Nil    => empty
-      case Seq(x: O) => emit(x) // Unnecessary type check but needed for Dotty
+      case Seq(x) => emit(x.asInstanceOf[O])
       case _      => new Stream(Pull.output(Chunk.seq(os)))
     }
 
@@ -3400,10 +3400,10 @@ object Stream extends StreamLowPriority {
     */
   def resourceWeak[F[_], O](r: Resource[F, O]): Stream[F, O] =
     r match {
-      case r: Resource.Allocate[F, O] =>
+      case r: Resource.Allocate[f, o] =>
         Stream.bracketCaseWeak(r.resource) { case ((_, release), e) => release(e) }.map(_._1)
-      case r: Resource.Bind[F, x, O] => resourceWeak(r.source).flatMap(o => resourceWeak(r.fs(o)))
-      case r: Resource.Suspend[F, O] => Stream.eval(r.resource).flatMap(resourceWeak)
+      case r: Resource.Bind[f, x, o] => resourceWeak(r.source).flatMap(o => resourceWeak(r.fs(o)))
+      case r: Resource.Suspend[f, o] => Stream.eval(r.resource).flatMap(resourceWeak)
     }
 
   /**
