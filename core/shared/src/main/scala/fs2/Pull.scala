@@ -345,12 +345,11 @@ object Pull extends PullLowPriority {
     override def mapOutput[P](f: O => P): Pull[F, P, R] =
       suspend {
         ViewL(this) match {
-          case vU: ViewL.View[f, o, x, r] =>
-            val v = vU.asInstanceOf[ViewL.View[F, O, x, R]]
+          case v: ViewL.View[F, O, x, R] =>
             new Bind[F, P, x, R](v.step.mapOutput(f)) {
               def cont(e: Result[x]) = v.next(e).mapOutput(f)
             }
-          case r: Result[_] => r.asInstanceOf[Pull[F, P, R]] // Safe but Dotty requires this cast
+          case r: Result[R] => r
         }
       }
   }
@@ -363,12 +362,12 @@ object Pull extends PullLowPriority {
   private object ViewL {
 
     /** unrolled view of Pull `bind` structure * */
-    private[Pull] sealed abstract case class View[+F[_], O, X, R](step: Action[F, O, X])
+    private[Pull] sealed abstract case class View[+F[_], +O, X, +R](step: Action[F, O, X])
         extends ViewL[F, O, R] {
       def next(r: Result[X]): Pull[F, O, R]
     }
 
-    final class EvalView[+F[_], O, R](step: Action[F, O, R]) extends View[F, O, R, R](step) {
+    final class EvalView[+F[_], +O, R](step: Action[F, O, R]) extends View[F, O, R, R](step) {
       def next(r: Result[R]): Pull[F, O, R] = r
     }
 
@@ -381,16 +380,18 @@ object Pull extends PullLowPriority {
         case e: Action[F, O, Z] => new EvalView[F, O, Z](e)
         case b: Bind[F, O, y, Z] =>
           b.step match {
-            case r: Result[_] => mk(b.cont(r).asInstanceOf[Pull[F, O, Z]]) // Safe but needed for Dotty
+            case r: Result[_] => 
+              val ry: Result[y] = r.asInstanceOf[Result[y]] // TODO unsafe?
+              mk(b.cont(ry))
             case e: Action[F, O, y] =>
               new ViewL.View[F, O, y, Z](e) {
-                def next(r: Result[y]): Pull[F, O, Z] = b.cont(r).asInstanceOf[Pull[F, O, Z]] // Safe but needed for Dotty
+                def next(r: Result[y]): Pull[F, O, Z] = b.cont(r).asInstanceOf[Pull[F, O, Z]] // TODO unsafe?
               }
             case bb: Bind[F, O, x, _] =>
               val nb = new Bind[F, O, x, Z](bb.step) {
                 private[this] val bdel: Bind[F, O, y, Z] = b.delegate
                 def cont(zr: Result[x]): Pull[F, O, Z] =
-                  new Bind[F, O, y, Z](bb.cont(zr).asInstanceOf[Pull[F, O, y]]) { // Safe but needed for Dotty
+                  new Bind[F, O, y, Z](bb.cont(zr).asInstanceOf[Pull[F, O, y]]) { // TODO unsafe?
                     override val delegate: Bind[F, O, y, Z] = bdel
                     def cont(yr: Result[y]): Pull[F, O, Z] = delegate.cont(yr)
                   }
@@ -550,8 +551,7 @@ object Pull extends PullLowPriority {
         case interrupted: Pull.Result.Interrupted =>
           F.pure(Interrupted(interrupted.context, interrupted.deferredError))
 
-        case viewU: ViewL.View[f, x, y, Unit] =>
-          val view: ViewL.View[F, X, y, Unit] = viewU.asInstanceOf[ViewL.View[F, X, y, Unit]]
+        case view: ViewL.View[F, X, y, Unit] =>
           def resume(res: Result[y]): F[R[X]] =
             go[X](scope, extendedTopLevelScope, view.next(res))
 
@@ -770,13 +770,11 @@ object Pull extends PullLowPriority {
         )
       case interrupted: Result.Interrupted => interrupted // impossible
 
-      case viewU: ViewL.View[F, o, _, Unit] =>
-        val view: ViewL.View[F, O, _, Unit] = viewU.asInstanceOf[ViewL.View[F, O, _, Unit]]
+      case view: ViewL.View[F, O, _, Unit] =>
         view.step match {
           case CloseScope(scopeId, _, _) =>
             // Inner scope is getting closed b/c a parent was interrupted
-            val nextU = view.next.asInstanceOf[Pull.Result[Unit] => Pull[F, O, Unit]] // TODO
-            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(nextU)
+            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(view.next)
           case _ =>
             // all other cases insert interruption cause
             view.next(interruption)
@@ -804,8 +802,7 @@ object Pull extends PullLowPriority {
       ViewL(next) match {
         case result: Result[Unit] => result
 
-        case viewU: ViewL.View[F, x, y, Unit] =>
-          val view: ViewL.View[F, X, y, Unit] = viewU.asInstanceOf[ViewL.View[F, X, y, Unit]]
+        case view: ViewL.View[F, X, y, Unit] =>
           view.step match {
             case output: Output[_] =>
               output.transformWith {
@@ -835,7 +832,7 @@ object Pull extends PullLowPriority {
             case alg: AlgEffect[F, r] =>
               // Safe case but needed for Dotty
               translateAlgEffect(alg)
-                .transformWith(r => translateStep(view.next(r).asInstanceOf[Pull[F, X, Unit]], isMainLevel))
+                .transformWith(r => translateStep(view.next(r.asInstanceOf[Result[y]]), isMainLevel))
           }
       }
 
