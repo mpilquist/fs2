@@ -14,7 +14,7 @@ private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
 
   def toArraySeqUntagged: ArraySeq[O] =
     self match {
-      case knownType: Chunk.KnownElementType[O] => toArraySeq[O](knownType.elementClassTag)
+      case knownType: Chunk.KnownElementType[O] => knownType.toArraySeq[O](knownType.elementClassTag)
       case _ =>
         val buf = ArraySeq.untagged.newBuilder[O]
         buf.sizeHint(size)

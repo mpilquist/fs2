@@ -13,7 +13,7 @@ addCommandAlias(
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
 
-crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10", "0.25.0-RC2")
+crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10", "0.25.0-RC2", dottyLatestNightlyBuild.get)
 scalaVersion in ThisBuild := crossScalaVersions.value.head
 
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")

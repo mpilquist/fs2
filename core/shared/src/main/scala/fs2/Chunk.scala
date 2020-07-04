@@ -497,7 +497,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Optional mix-in that provides the class tag of the element type in a chunk. */
-  trait KnownElementType[A] { self: Chunk[A] =>
+  trait KnownElementType[A] extends Chunk[A] {
     def elementClassTag: ClassTag[A]
   }
 

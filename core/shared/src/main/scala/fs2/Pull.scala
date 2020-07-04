@@ -4,7 +4,6 @@ import scala.annotation.tailrec
 import scala.util.control.NonFatal
 
 import cats.{Eval => _, _}
-import cats.arrow.FunctionK
 import cats.effect._
 import cats.implicits._
 
@@ -350,7 +349,7 @@ object Pull extends PullLowPriority {
             new Bind[F, P, x, R](v.step.mapOutput(f)) {
               def cont(e: Result[x]) = v.next(e).mapOutput(f)
             }
-          case r: Result[_] => r
+          case r: Result[_] => r.asInstanceOf[Pull[F, P, R]] // Safe but Dotty requires this cast
         }
       }
   }
@@ -381,16 +380,16 @@ object Pull extends PullLowPriority {
         case e: Action[F, O, Z] => new EvalView[F, O, Z](e)
         case b: Bind[F, O, y, Z] =>
           b.step match {
-            case r: Result[_] => mk(b.cont(r))
+            case r: Result[_] => mk(b.cont(r).asInstanceOf[Pull[F, O, Z]]) // Safe but needed for Dotty
             case e: Action[F, O, y] =>
               new ViewL.View[F, O, y, Z](e) {
-                def next(r: Result[y]): Pull[F, O, Z] = b.cont(r)
+                def next(r: Result[y]): Pull[F, O, Z] = b.cont(r).asInstanceOf[Pull[F, O, Z]] // Safe but needed for Dotty
               }
             case bb: Bind[F, O, x, _] =>
               val nb = new Bind[F, O, x, Z](bb.step) {
                 private[this] val bdel: Bind[F, O, y, Z] = b.delegate
                 def cont(zr: Result[x]): Pull[F, O, Z] =
-                  new Bind[F, O, y, Z](bb.cont(zr)) {
+                  new Bind[F, O, y, Z](bb.cont(zr).asInstanceOf[Pull[F, O, y]]) { // Safe but needed for Dotty
                     override val delegate: Bind[F, O, y, Z] = bdel
                     def cont(yr: Result[y]): Pull[F, O, Z] = delegate.cont(yr)
                   }
@@ -423,12 +422,9 @@ object Pull extends PullLowPriority {
     * @param stream             Stream to step
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  private final case class Step[X](stream: Pull[Any, X, Unit], scope: Option[Token])
-      extends Action[Pure, INothing, Option[(Chunk[X], Token, Pull[Any, X, Unit])]] {
-    /* NOTE: The use of `Any` and `Pure` done to by-pass an error in Scala 2.12 type-checker,
-     * that produces a crash when dealing with Higher-Kinded GADTs in which the F parameter appears
-     * Inside one of the values of the case class.      */
-    override def mapOutput[P](f: INothing => P): Step[X] = this
+  private final case class Step[+F[_], X](stream: Pull[F, X, Unit], scope: Option[Token])
+      extends Action[Pure, INothing, Option[(Chunk[X], Token, Pull[F, X, Unit])]] {
+    override def mapOutput[P](f: INothing => P): Step[F, X] = this
   }
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
@@ -462,7 +458,7 @@ object Pull extends PullLowPriority {
   private[fs2] def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]
   ): Pull[F, Nothing, Option[Stream.StepLeg[F, O]]] =
-    Step[O](leg.next, Some(leg.scopeId)).map {
+    Step[F, O](leg.next, Some(leg.scopeId)).map {
       _.map {
         case (h, id, t) => new Stream.StepLeg[F, O](h, id, t.asInstanceOf[Pull[F, O, Unit]])
       }
@@ -571,7 +567,7 @@ object Pull extends PullLowPriority {
                 F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
               )
 
-            case u: Step[y] =>
+            case u: Step[F, y] =>
               // if scope was specified in step, try to find it, otherwise use the current scope.
               F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
                 scope.findStepScope(scopeId)
@@ -809,7 +805,7 @@ object Pull extends PullLowPriority {
                 case r @ Result.Succeeded(_) if isMainLevel =>
                   translateStep(view.next(r), isMainLevel)
 
-                case r @ Result.Succeeded(_) if !isMainLevel =>
+                case r @ Result.Succeeded(_) =>
                   // Cast is safe here, as at this point the evaluation of this Step will end
                   // and the remainder of the free will be passed as a result in Bind. As such
                   // next Step will have this to evaluate, and will try to translate again.
@@ -820,19 +816,18 @@ object Pull extends PullLowPriority {
                 case r @ Result.Interrupted(_, _) => translateStep(view.next(r), isMainLevel)
               }
 
-            case step: Step[x] =>
-              // NOTE: The use of the `asInstanceOf` is to by-pass a compiler-crash in Scala 2.12,
-              // involving GADTs with a covariant Higher-Kinded parameter.
-              Step[x](
-                stream = translateStep[x](step.stream.asInstanceOf[Pull[F, x, Unit]], false),
+            case step: Step[F, x] =>
+              Step[G, x](
+                stream = translateStep[x](step.stream, false),
                 scope = step.scope
               ).transformWith { r =>
                 translateStep[X](view.next(r.asInstanceOf[Result[y]]), isMainLevel)
               }
 
             case alg: AlgEffect[F, r] =>
+              // Safe case but needed for Dotty
               translateAlgEffect(alg)
-                .transformWith(r => translateStep(view.next(r), isMainLevel))
+                .transformWith(r => translateStep(view.next(r).asInstanceOf[Pull[F, X, Unit]], isMainLevel))
           }
       }
 
