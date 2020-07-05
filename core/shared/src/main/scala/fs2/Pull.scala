@@ -381,17 +381,17 @@ object Pull extends PullLowPriority {
         case b: Bind[F, O, y, Z] =>
           b.step match {
             case r: Result[_] => 
-              val ry: Result[y] = r.asInstanceOf[Result[y]] // TODO unsafe?
+              val ry: Result[y] = r.asInstanceOf[Result[y]]
               mk(b.cont(ry))
-            case e: Action[F, O, y] =>
-              new ViewL.View[F, O, y, Z](e) {
-                def next(r: Result[y]): Pull[F, O, Z] = b.cont(r).asInstanceOf[Pull[F, O, Z]] // TODO unsafe?
+            case e: Action[F, O, y2] =>
+              new ViewL.View[F, O, y2, Z](e) {
+                def next(r: Result[y2]): Pull[F, O, Z] = b.cont(r.asInstanceOf[Result[y]])
               }
             case bb: Bind[F, O, x, _] =>
               val nb = new Bind[F, O, x, Z](bb.step) {
                 private[this] val bdel: Bind[F, O, y, Z] = b.delegate
                 def cont(zr: Result[x]): Pull[F, O, Z] =
-                  new Bind[F, O, y, Z](bb.cont(zr).asInstanceOf[Pull[F, O, y]]) { // TODO unsafe?
+                  new Bind[F, O, y, Z](bb.cont(zr).asInstanceOf[Pull[F, O, y]]) {
                     override val delegate: Bind[F, O, y, Z] = bdel
                     def cont(yr: Result[y]): Pull[F, O, Z] = delegate.cont(yr)
                   }

@@ -3401,10 +3401,9 @@ object Stream extends StreamLowPriority {
   def resourceWeak[F[_], O](r: Resource[F, O]): Stream[F, O] =
     r match {
       case r: Resource.Allocate[f, o] =>
-        val rr: Resource.Allocate[F, O] = r.asInstanceOf[Resource.Allocate[F, O]]
-        Stream.bracketCaseWeak(rr.resource) { case ((_, release), e) => release(e) }.map(_._1)
-      case r: Resource.Bind[f, x, o] => resourceWeak(r.source).flatMap(o => resourceWeak(r.fs(o)))
-      case r: Resource.Suspend[f, o] => Stream.eval(r.resource).flatMap(resourceWeak)
+        Stream.bracketCaseWeak[f, (o, ExitCase[Throwable] => f[Unit])](r.resource) { case ((_, release), e) => release(e) }.map(_._1)
+      case r: Resource.Bind[f, x, o] => resourceWeak[f, x](r.source).flatMap(o => resourceWeak[f, o](r.fs(o)))
+      case r: Resource.Suspend[f, o] => Stream.eval(r.resource).flatMap(resourceWeak[f, o])
     }
 
   /**
