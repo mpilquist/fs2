@@ -179,7 +179,7 @@ private[fs2] final class CompileScope[F[_]] private (
   ): F[Either[Throwable, R]] =
     ScopedResource.create[F].flatMap { resource =>
       val acq: Poll[F] => F[Either[Throwable, R]] = poll =>
-        poll(fr).redeemWith(
+        fr.redeemWith(
           t => F.pure(Left(t)),
           r => {
             val finalizer = (ec: Resource.ExitCase) => release(r, ec)
