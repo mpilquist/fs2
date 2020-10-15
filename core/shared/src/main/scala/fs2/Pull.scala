@@ -562,8 +562,7 @@ object Pull extends PullLowPriority {
       extendLastTopLevelScope: Boolean,
       init: B
   )(g: (B, Chunk[O]) => B)(implicit
-      F: MonadError[F, Throwable],
-      TI: TranslateInterrupt[F]
+      F: MonadError[F, Throwable]
   ): F[B] = {
 
     case class Done(scope: CompileScope[F]) extends R[Pure, INothing]
@@ -704,7 +703,6 @@ object Pull extends PullLowPriority {
               go(scope, extendedTopLevelScope, translation, view.next(result))
 
             case open: OpenScope =>
-              val interruptible = if (open.useInterruption) TI.interruptible else None
               interruptGuard(scope) {
                 val maybeCloseExtendedScope: F[Boolean] =
                   // If we're opening a new top-level scope (aka, direct descendant of root),
@@ -717,7 +715,7 @@ object Pull extends PullLowPriority {
                   else F.pure(false)
                 maybeCloseExtendedScope.flatMap { closedExtendedScope =>
                   val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
-                  F.flatMap(scope.open(interruptible)) {
+                  F.flatMap(scope.open(open.useInterruption)) {
                     case Left(err) =>
                       val result = Result.Fail(err)
                       go(scope, newExtendedScope, translation, view.next(result))
