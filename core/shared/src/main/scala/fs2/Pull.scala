@@ -448,7 +448,7 @@ object Pull extends PullLowPriority {
       fk: G ~> F
   ) extends Action[F, O, Unit] {
     type From[A] = G[A]
-    type To[A]   = F[A]
+    type To[A] = F[A]
 
     override def mapOutput[O2](f: O => O2): Pull[F, O2, Unit] =
       Translate(stream.mapOutput(f), fk)
