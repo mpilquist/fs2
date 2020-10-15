@@ -779,9 +779,9 @@ object Pull extends PullLowPriority {
       F.flatMap(go[F, O](scope, None, initFk, stream)) {
         case Done(_) => F.pure(accB)
         case Out(head, scope, tail) =>
-          try outerLoop(scope, g(accB, head), tail)
+          try outerLoop(scope, g(accB, head), tail.asInstanceOf[Pull[F, O, Unit]])
           catch {
-            case NonFatal(err) => outerLoop(scope, accB, tail.asHandler(err))
+            case NonFatal(err) => outerLoop(scope, accB, tail.asHandler(err).asInstanceOf[Pull[F, O, Unit]])
           }
         case Interrupted(_, None)      => F.pure(accB)
         case Interrupted(_, Some(err)) => F.raiseError(err)

@@ -178,7 +178,7 @@ private[fs2] final class CompileScope[F[_]] private (
       release: (R, Resource.ExitCase) => F[Unit]
   ): F[Either[Throwable, R]] =
     ScopedResource.create[F].flatMap { resource =>
-      val acq: Poll[F] => F[Either[Throwable, R]] = poll =>
+      val acq: Poll[F] => F[Either[Throwable, R]] = _ =>
         fr.redeemWith(
           t => F.pure(Left(t)),
           r => {
