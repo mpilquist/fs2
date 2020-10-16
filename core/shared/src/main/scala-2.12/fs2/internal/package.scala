@@ -24,7 +24,13 @@ package fs2
 import scala.collection.generic.CanBuildFrom
 import scala.collection.mutable.Builder
 
+import cats.Id
+import cats.effect.Outcome
+
 package object internal {
+
+  type InterruptionOutcome = Outcome[Id, Throwable, Token]
+
   private[fs2] type Factory[-A, +C] = CanBuildFrom[Nothing, A, C]
 
   private[fs2] implicit class FactoryOps[-A, +C](private val factory: Factory[A, C]) {

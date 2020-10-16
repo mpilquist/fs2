@@ -21,6 +21,11 @@
 
 package fs2
 
+import cats.Id
+import cats.effect.Outcome
+
 package object internal {
+  type InterruptionOutcome = Outcome[Id, Throwable, Token]
+
   private[fs2] type Factory[-A, +C] = scala.collection.Factory[A, C]
 }
