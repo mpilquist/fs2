@@ -475,8 +475,16 @@ object Pull extends PullLowPriority {
 
   private final case class Acquire[+F[_], R](
       resource: F[R],
-      release: (R, Resource.ExitCase) => F[Unit]
+      release: (R, Resource.ExitCase) => F[Unit],
   ) extends AlgEffect[F, R]
+
+  // TODO
+  private[fs2] final case class Acquire2[F[_], R](
+      resource: Poll[F] => F[R],
+      release: (R, Resource.ExitCase) => F[Unit],
+      concurrent: Concurrent[F]
+  ) extends AlgEffect[F, R]
+ 
   // NOTE: The use of a separate `G` and `Pure` is done to by-pass a compiler-crash in Scala 2.12,
   // involving GADTs with a covariant Higher-Kinded parameter. */
   private final case class OpenScope(useInterruption: Boolean) extends AlgEffect[Pure, Token]
@@ -685,10 +693,25 @@ object Pull extends PullLowPriority {
 
             case acquire: Acquire[G, r] =>
               interruptGuard(scope) {
-                val onScope = scope.acquireResource(
+                val onScope = scope.acquireResource(_ =>
                   translation(acquire.resource),
                   (res: r, ec: Resource.ExitCase) => translation(acquire.release(res, ec))
                 )
+
+                F.flatMap(onScope) { r =>
+                  val result = Result.fromEither(r)
+                  go(scope, extendedTopLevelScope, translation, view.next(result))
+                }
+              }
+
+            case acquireU: Acquire2[g, r] =>
+              val acquire: Acquire2[G, r] = acquireU.asInstanceOf[Acquire2[G, r]]
+              interruptGuard(scope) {
+                val onScope = scope.acquireResource2(
+                  acquire.resource,
+                  acquire.release,
+                  translation,
+                )(acquire.concurrent)
 
                 F.flatMap(onScope) { r =>
                   val result = Result.fromEither(r)
