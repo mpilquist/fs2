@@ -427,7 +427,7 @@ class StreamSuite extends Fs2Suite {
       }
     }
 
-    test("#2072 - stream canceled while resource acquisition is running".only) {
+    test("#2072 - stream canceled while resource acquisition is running") {
       for {
         ref <- Ref.of[IO, Boolean](false)
         _ <- testCancelation {
