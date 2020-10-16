@@ -565,11 +565,11 @@ object Pull extends PullLowPriority {
       F: MonadError[F, Throwable]
   ): F[B] = {
 
+    sealed trait R[+G[_], +X]
     case class Done(scope: CompileScope[F]) extends R[Pure, INothing]
     case class Out[+G[_], +X](head: Chunk[X], scope: CompileScope[F], tail: Pull[G, X, Unit])
         extends R[G, X]
     case class Interrupted(scopeId: Token, err: Option[Throwable]) extends R[Pure, INothing]
-    sealed trait R[+G[_], +X]
 
     def go[G[_], X](
         scope: CompileScope[F],
@@ -605,21 +605,19 @@ object Pull extends PullLowPriority {
                 F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
               )
 
-            case tstX: Translate[h, f, _] =>
-              type H[A] = tstX.From[A]
-              val tst: Translate[H, G, X] = tstX.asInstanceOf[Translate[H, G, X]]
+            case tst: Translate[h, g, x] =>
               /* How do we run a translation with an extra FunctionK ?
                * - we composed the translation into the default interpretation...
                * - we run the inner stream with it...
                * - If we get an Out, which is to say a Stop of a step, we need to translate the continuation
                *   (tail) captured in that Out. Other results R, we just pass upstairs.
                */
-              val composed: tst.From ~> F = translation.compose[tst.From](tst.fk)
-              val runInner: F[R[tst.From, X]] =
-                go[tst.From, X](scope, extendedTopLevelScope, composed, tst.stream)
+              val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
+              val runInner: F[R[h, x]] =
+                go[h, x](scope, extendedTopLevelScope, composed, tst.stream)
 
               F.map(runInner) {
-                case Out(head, scope, tail)    => Out(head, scope, Translate(tail, tst.fk))
+                case out: Out[h, x]            => Out[g, x](out.head, out.scope, Translate(out.tail, tst.fk))
                 case dd @ Done(_)              => dd
                 case inter @ Interrupted(_, _) => inter
               }
@@ -639,15 +637,15 @@ object Pull extends PullLowPriority {
                         val result = Result.Succeeded(None)
                         go(scope, extendedTopLevelScope, translation, view.next(result))
                       }
-                    case Right(Out(head, outScope, tail)) =>
+                    case Right(out: Out[g, y]) =>
                       // if we originally swapped scopes we want to return the original
                       // scope back to the go as that is the scope that is expected to be here.
-                      val nextScope = if (u.scope.isEmpty) outScope else scope
-                      val uncons = (head, outScope.id, tail.asInstanceOf[Pull[f, y, Unit]])
+                      val nextScope = if (u.scope.isEmpty) out.scope else scope
+                      val uncons = (out.head, out.scope.id, out.tail.asInstanceOf[Pull[f, y, Unit]])
                       //Option[(Chunk[y], Token, Pull[f, y, Unit])])
                       val result = Result.Succeeded(Some(uncons))
                       interruptGuard(nextScope) {
-                        val next = view.next(result).asInstanceOf[Pull[G, X, Unit]]
+                        val next = view.next(result).asInstanceOf[Pull[g, X, Unit]]
                         go(nextScope, extendedTopLevelScope, translation, next)
                       }
 
@@ -778,10 +776,11 @@ object Pull extends PullLowPriority {
     def outerLoop(scope: CompileScope[F], accB: B, stream: Pull[F, O, Unit]): F[B] =
       F.flatMap(go[F, O](scope, None, initFk, stream)) {
         case Done(_) => F.pure(accB)
-        case Out(head, scope, tail) =>
-          try outerLoop(scope, g(accB, head), tail.asInstanceOf[Pull[F, O, Unit]])
+        case out: Out[f, o] =>
+          try outerLoop(out.scope, g(accB, out.head), out.tail.asInstanceOf[Pull[f, O, Unit]])
           catch {
-            case NonFatal(err) => outerLoop(scope, accB, tail.asHandler(err).asInstanceOf[Pull[F, O, Unit]])
+            case NonFatal(err) =>
+              outerLoop(out.scope, accB, out.tail.asHandler(err).asInstanceOf[Pull[f, O, Unit]])
           }
         case Interrupted(_, None)      => F.pure(accB)
         case Interrupted(_, Some(err)) => F.raiseError(err)
