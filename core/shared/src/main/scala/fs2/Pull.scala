@@ -452,9 +452,6 @@ object Pull extends PullLowPriority {
       stream: Pull[G, O, Unit],
       fk: G ~> F
   ) extends Action[F, O, Unit] {
-    type From[A] = G[A]
-    type To[A] = F[A]
-
     override def mapOutput[O2](f: O => O2): Pull[F, O2, Unit] =
       Translate(stream.mapOutput(f), fk)
   }
@@ -618,12 +615,6 @@ object Pull extends PullLowPriority {
               )
 
             case tst: Translate[h, g, x] =>
-              /* How do we run a translation with an extra FunctionK ?
-               * - we composed the translation into the default interpretation...
-               * - we run the inner stream with it...
-               * - If we get an Out, which is to say a Stop of a step, we need to translate the continuation
-               *   (tail) captured in that Out. Other results R, we just pass upstairs.
-               */
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
               val runInner: F[R[h, x]] =
                 go[h, x](scope, extendedTopLevelScope, composed, tst.stream)
@@ -699,7 +690,7 @@ object Pull extends PullLowPriority {
               interruptGuard(scope) {
                 val onScope = scope.acquireResource(
                   _ => translation(acquire.resource),
-                  (r, ec) => translation(acquire.release(r, ec))
+                  (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
                 )
 
                 F.flatMap(onScope) { r =>
@@ -708,12 +699,11 @@ object Pull extends PullLowPriority {
                 }
               }
 
-            case acquireU: AcquireCancelable[g, r] =>
-              val acquire: AcquireCancelable[G, r] = acquireU.asInstanceOf[AcquireCancelable[G, r]]
+            case acquire: AcquireCancelable[G, r] =>
               interruptGuard(scope) {
-                val onScope = scope.acquireResource(
+                val onScope = scope.acquireResource[r](
                   p => p(translation(acquire.monadCancel.uncancelable(acquire.resource))),
-                  (r, ec) => translation(acquire.release(r, ec))
+                  (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
                 )
 
                 F.flatMap(onScope) { r =>

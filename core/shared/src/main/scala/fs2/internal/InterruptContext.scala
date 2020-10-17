@@ -21,11 +21,12 @@
 
 package fs2.internal
 
-import cats.Applicative
+import cats.{Applicative, Id}
 import cats.effect.{Concurrent, Outcome}
 import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.syntax.all._
+import InterruptContext.InterruptionOutcome
 
 /** A context of interruption status. This is shared from the parent that was created as interruptible to all
   * its children. It assures consistent view of the interruption through the stack
@@ -89,6 +90,8 @@ final private[fs2] case class InterruptContext[F[_]](
 }
 
 private[fs2] object InterruptContext {
+
+  type InterruptionOutcome = Outcome[Id, Throwable, Token]
 
   def apply[F[_]](
       newScopeId: Token,

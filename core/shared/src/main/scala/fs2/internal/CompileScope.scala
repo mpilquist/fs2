@@ -23,13 +23,14 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.{~>, Id, Traverse, TraverseFilter}
+import cats.{Id, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{MonadCancel, Outcome, Poll, Resource}
+import cats.effect.{Outcome, Poll, Resource}
 import cats.effect.kernel.Ref
 import cats.syntax.all._
 
 import fs2.{Compiler, CompositeFailure, Scope}
+import fs2.internal.InterruptContext.InterruptionOutcome
 
 /** Implementation of [[Scope]] for the internal stream interpreter.
   *
