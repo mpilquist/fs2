@@ -25,7 +25,7 @@ import scala.annotation.tailrec
 
 import cats.{~>, Id, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{Concurrent, Outcome, Poll, Resource}
+import cats.effect.{MonadCancel, Outcome, Poll, Resource}
 import cats.effect.kernel.Ref
 import cats.syntax.all._
 
@@ -174,39 +174,11 @@ private[fs2] final class CompileScope[F[_]] private (
       release: (R, Resource.ExitCase) => F[Unit]
   ): F[Either[Throwable, R]] =
     ScopedResource.create[F].flatMap { resource =>
-      F.uncancelable { poll =>
+      F.uncancelable { poll => 
         acquire(poll).redeemWith(
           t => F.pure(Left(t)),
           r => {
             val finalizer = (ec: Resource.ExitCase) => release(r, ec)
-            resource.acquired(finalizer).flatMap { result =>
-              if (result.exists(identity)) {
-                register(resource).flatMap {
-                  case false =>
-                    finalizer(Resource.ExitCase.Canceled).as(Left(AcquireAfterScopeClosed))
-                  case true => F.pure(Right(r))
-                }
-              } else {
-                finalizer(Resource.ExitCase.Canceled)
-                  .as(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
-              }
-            }
-          }
-        )
-      }
-    }
-
-  def acquireResource2[G[_], R](
-      acquire: Poll[G] => G[R],
-      release: (R, Resource.ExitCase) => G[Unit],
-      gToF: G ~> F
-  )(implicit G: Concurrent[G]): F[Either[Throwable, R]] =
-    ScopedResource.create[F].flatMap { resource =>
-      F.uncancelable { outerPoll => 
-        outerPoll(gToF(G.uncancelable(p => acquire(p)))).redeemWith(
-          t => F.pure(Left(t)),
-          r => {
-            val finalizer = (ec: Resource.ExitCase) => gToF(release(r, ec))
             resource.acquired(finalizer).flatMap { result =>
               if (result.exists(identity)) {
                 register(resource).flatMap {

@@ -173,6 +173,11 @@ object Pull extends PullLowPriority {
       release: (R, Resource.ExitCase) => F[Unit]
   ): Pull[F, INothing, R] = Acquire(resource, release)
 
+  private[fs2] def acquireCancelable[F[_], R](
+      resource: Poll[F] => F[R],
+      release: (R, Resource.ExitCase) => F[Unit]
+  )(implicit F: MonadCancel[F, Throwable]): Pull[F, INothing, R] = AcquireCancelable(resource, release, F)
+
   /** Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
     */
@@ -478,11 +483,10 @@ object Pull extends PullLowPriority {
       release: (R, Resource.ExitCase) => F[Unit],
   ) extends AlgEffect[F, R]
 
-  // TODO
-  private[fs2] final case class Acquire2[F[_], R](
+  private final case class AcquireCancelable[F[_], R](
       resource: Poll[F] => F[R],
       release: (R, Resource.ExitCase) => F[Unit],
-      concurrent: Concurrent[F]
+      monadCancel: MonadCancel[F, Throwable]
   ) extends AlgEffect[F, R]
  
   // NOTE: The use of a separate `G` and `Pure` is done to by-pass a compiler-crash in Scala 2.12,
@@ -693,9 +697,9 @@ object Pull extends PullLowPriority {
 
             case acquire: Acquire[G, r] =>
               interruptGuard(scope) {
-                val onScope = scope.acquireResource(_ =>
-                  translation(acquire.resource),
-                  (res: r, ec: Resource.ExitCase) => translation(acquire.release(res, ec))
+                val onScope = scope.acquireResource(
+                  _ => translation(acquire.resource),
+                  (r, ec) => translation(acquire.release(r, ec))
                 )
 
                 F.flatMap(onScope) { r =>
@@ -704,14 +708,13 @@ object Pull extends PullLowPriority {
                 }
               }
 
-            case acquireU: Acquire2[g, r] =>
-              val acquire: Acquire2[G, r] = acquireU.asInstanceOf[Acquire2[G, r]]
+            case acquireU: AcquireCancelable[g, r] =>
+              val acquire: AcquireCancelable[G, r] = acquireU.asInstanceOf[AcquireCancelable[G, r]]
               interruptGuard(scope) {
-                val onScope = scope.acquireResource2(
-                  acquire.resource,
-                  acquire.release,
-                  translation,
-                )(acquire.concurrent)
+                val onScope = scope.acquireResource(
+                  p => p(translation(acquire.monadCancel.uncancelable(acquire.resource))),
+                  (r, ec) => translation(acquire.release(r, ec))
+                )
 
                 F.flatMap(onScope) { r =>
                   val result = Result.fromEither(r)

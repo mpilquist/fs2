@@ -2945,7 +2945,7 @@ object Stream extends StreamLowPriority {
      */
    def bracketFull[F[x] >: Pure[x], R](
        acquire: Poll[F] => F[R]
-   )(release: (R, Resource.ExitCase) => F[Unit])(implicit F: Concurrent[F]): Stream[F, R] =
+   )(release: (R, Resource.ExitCase) => F[Unit])(implicit F: MonadCancel[F, Throwable]): Stream[F, R] =
      bracketFullWeak(acquire)(release).scope
 
      /** Like [[bracketFull]] but no scope is introduced, causing resource finalization to
@@ -2953,8 +2953,9 @@ object Stream extends StreamLowPriority {
      */
    def bracketFullWeak[F[x] >: Pure[x], R](
        acquire: Poll[F] => F[R]
-       )(release: (R, Resource.ExitCase) => F[Unit])(implicit F: Concurrent[F]): Stream[F, R] =
-       new Stream(Pull.Acquire2[F, R](acquire, release, F).flatMap(Pull.output1(_)))
+       )(release: (R, Resource.ExitCase) => F[Unit])(implicit F: MonadCancel[F, Throwable]): Stream[F, R] =
+       new Stream(Pull.acquireCancelable[F, R](acquire, release).flatMap(Pull.output1(_)))
+
   /** Creates a pure stream that emits the elements of the supplied chunk.
     *
     * @example {{{
