@@ -175,7 +175,7 @@ private[fs2] final class CompileScope[F[_]] private (
       release: (R, Resource.ExitCase) => F[Unit]
   ): F[Either[Throwable, R]] =
     ScopedResource.create[F].flatMap { resource =>
-      F.uncancelable { poll => 
+      F.uncancelable { poll =>
         acquire(poll).redeemWith(
           t => F.pure(Left(t)),
           r => {

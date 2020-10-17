@@ -176,7 +176,8 @@ object Pull extends PullLowPriority {
   private[fs2] def acquireCancelable[F[_], R](
       resource: Poll[F] => F[R],
       release: (R, Resource.ExitCase) => F[Unit]
-  )(implicit F: MonadCancel[F, Throwable]): Pull[F, INothing, R] = AcquireCancelable(resource, release, F)
+  )(implicit F: MonadCancel[F, Throwable]): Pull[F, INothing, R] =
+    AcquireCancelable(resource, release, F)
 
   /** Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
@@ -477,7 +478,7 @@ object Pull extends PullLowPriority {
 
   private final case class Acquire[+F[_], R](
       resource: F[R],
-      release: (R, Resource.ExitCase) => F[Unit],
+      release: (R, Resource.ExitCase) => F[Unit]
   ) extends AlgEffect[F, R]
 
   private final case class AcquireCancelable[F[_], R](
@@ -485,7 +486,7 @@ object Pull extends PullLowPriority {
       release: (R, Resource.ExitCase) => F[Unit],
       monadCancel: MonadCancel[F, Throwable]
   ) extends AlgEffect[F, R]
- 
+
   // NOTE: The use of a separate `G` and `Pure` is done to by-pass a compiler-crash in Scala 2.12,
   // involving GADTs with a covariant Higher-Kinded parameter. */
   private final case class OpenScope(useInterruption: Boolean) extends AlgEffect[Pure, Token]
