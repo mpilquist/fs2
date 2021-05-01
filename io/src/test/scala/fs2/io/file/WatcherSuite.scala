@@ -77,9 +77,9 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
         .flatMap { case (w, dir) =>
           val f1 = dir.resolve("f1")
           val f2 = dir.resolve("f2")
-          w.events().debug()
+          w.events()
             .scan(0) {
-              case (cnt, Watcher.Event.Modified(_, _)) =>
+              case (cnt, Watcher.Event.Created(_, _)) =>
                 cnt + 1
               case (cnt, _) =>
                 cnt
@@ -95,15 +95,17 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
         .drain
     }
 
-    test("unregistration of a file in a directory does not impact other file watches in same directory") {
+    test(
+      "unregistration of a file in a directory does not impact other file watches in same directory"
+    ) {
       Stream
         .resource((Watcher.default[IO], tempDirectory).tupled)
         .flatMap { case (w, dir) =>
           val f1 = dir.resolve("f1")
           val f2 = dir.resolve("f2")
-          w.events().debug()
+          w.events()
             .scan(Nil: List[Path]) {
-              case (acc, Watcher.Event.Modified(p, _)) =>
+              case (acc, Watcher.Event.Created(p, _)) =>
                 p :: acc
               case (acc, _) =>
                 acc
@@ -163,7 +165,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
   }
 
   private def smallDelay: Stream[IO, Nothing] =
-    Stream.sleep_[IO](1000.millis)
+    Stream.sleep_[IO](100.millis)
 
   // Tries to load the Oracle specific SensitivityWatchEventModifier to increase sensitivity of polling
   private val modifiers: Seq[WatchEvent.Modifier] = {
