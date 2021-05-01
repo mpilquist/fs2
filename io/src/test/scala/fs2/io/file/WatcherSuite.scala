@@ -70,26 +70,55 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
     }
   }
 
-  test("supports watching multiple files") {
-    Stream
-      .resource((Watcher.default[IO], tempFile, tempFile).tupled)
-      .flatMap { case (w, f1, f2) =>
-        w.events()
-          .scan(0) {
-            case (cnt, Watcher.Event.Modified(_, _)) =>
-              cnt + 1
-            case (cnt, _) =>
-              cnt
-          }
-          .takeWhile(_ < 2)
-          .concurrently(
-            smallDelay ++ Stream
-              .exec(List(f1, f2).traverse(f => w.watch(f, modifiers = modifiers)).void) ++
-              smallDelay ++ Stream.eval(modify(f1)) ++ smallDelay ++ Stream.eval(modify(f2))
-          )
-      }
-      .compile
-      .drain
+  group("supports watching multiple files") {
+    test("dynamic registration with multiple files in same directory") {
+      Stream
+        .resource((Watcher.default[IO], tempDirectory).tupled)
+        .flatMap { case (w, dir) =>
+          val f1 = dir.resolve("f1")
+          val f2 = dir.resolve("f2")
+          w.events().debug()
+            .scan(0) {
+              case (cnt, Watcher.Event.Modified(_, _)) =>
+                cnt + 1
+              case (cnt, _) =>
+                cnt
+            }
+            .takeWhile(_ < 2)
+            .concurrently(
+              smallDelay ++ Stream
+                .exec(List(f1, f2).traverse(f => w.watch(f, modifiers = modifiers)).void) ++
+                smallDelay ++ Stream.eval(modify(f1)) ++ smallDelay ++ Stream.eval(modify(f2))
+            )
+        }
+        .compile
+        .drain
+    }
+
+    test("unregistration of a file in a directory does not impact other file watches in same directory") {
+      Stream
+        .resource((Watcher.default[IO], tempDirectory).tupled)
+        .flatMap { case (w, dir) =>
+          val f1 = dir.resolve("f1")
+          val f2 = dir.resolve("f2")
+          w.events().debug()
+            .scan(Nil: List[Path]) {
+              case (acc, Watcher.Event.Modified(p, _)) =>
+                p :: acc
+              case (acc, _) =>
+                acc
+            }
+            .takeWhile(_ != List(f1))
+            .concurrently(
+              smallDelay ++ Stream
+                .exec(
+                  w.watch(f1, modifiers = modifiers) *> w.watch(f2, modifiers = modifiers).flatten
+                ) ++ smallDelay ++ Stream.eval(modify(f2)) ++ smallDelay ++ Stream.eval(modify(f1))
+            )
+        }
+        .compile
+        .drain
+    }
   }
 
   group("supports watching a directory") {

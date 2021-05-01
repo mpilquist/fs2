@@ -163,9 +163,9 @@ object Watcher {
     })
 
   private case class Registration[F[_]](
+      paths: Set[Path],
       types: Seq[EventType],
       modifiers: Seq[WatchEvent.Modifier],
-      eventPredicate: Event => Boolean,
       recurse: Boolean,
       suppressCreated: Boolean,
       cleanup: F[Unit]
@@ -279,6 +279,7 @@ object Watcher {
         modifiers: Seq[WatchEvent.Modifier]
     ): F[WatchKey] =
       F.blocking {
+        println("Registering " + path)
         val typesWithDefaults =
           if (types.isEmpty)
             List(EventType.Created, EventType.Deleted, EventType.Modified, EventType.Overflow)
@@ -290,6 +291,7 @@ object Watcher {
     override def events(pollTimeout: FiniteDuration): Stream[F, Event] =
       unfilteredEvents(pollTimeout).zip(registrations.continuous).flatMap {
         case ((key, events), registrations) =>
+        println(s"Internal event: $key // $events // $registrations")
           val reg = registrations.get(key)
           val filteredEvents = reg
             .map(reg =>
@@ -299,6 +301,7 @@ object Watcher {
               )
             )
             .getOrElse(Nil)
+            println("  filtered: " + filteredEvents)
           val recurse: Stream[F, Event] =
             if (reg.map(_.recurse).getOrElse(false)) {
               val created = events.collect { case Event.Created(p, _) => p }
